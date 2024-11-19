@@ -24,6 +24,8 @@
 # NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE,  EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import re
+
 from fastapi import APIRouter, Request
 from starlette.responses import PlainTextResponse
 
@@ -32,13 +34,28 @@ from neon_hana.app.dependencies import client_manager
 util_route = APIRouter(prefix="/util", tags=["utilities"])
 
 
+def _is_ipv4(address: str) -> bool:
+    ipv4_regex = re.compile(
+        r'^(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01'
+        r']?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|'
+        r'2[0-4][0-9]|[01]?[0-9][0-9]?)$')
+    return ipv4_regex.match(address)
+
+
 @util_route.get("/client_ip", response_class=PlainTextResponse)
 async def api_client_ip(request: Request) -> str:
-    client_manager.validate_auth("", request.client.host)
-    return request.client.host
+    ip_addr = request.client.host if request.client else "127.0.0.1"
+
+    if not _is_ipv4(ip_addr):
+        # Reported host is a hostname, not an IP address. Return a generic
+        # loopback value
+        ip_addr = "127.0.0.1"
+    client_manager.validate_auth("", ip_addr)
+    return ip_addr
 
 
 @util_route.get("/headers")
 async def api_headers(request: Request):
-    client_manager.validate_auth("", request.client.host)
+    ip_addr = request.client.host if request.client else "127.0.0.1"
+    client_manager.validate_auth("", ip_addr)
     return request.headers
