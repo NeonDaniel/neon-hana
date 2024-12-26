@@ -24,22 +24,27 @@
 # NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE,  EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+from datetime import datetime
 from typing import Optional
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
+from neon_data_models.models.user import NeonUserConfig
+
 
 class AuthenticationRequest(BaseModel):
     username: str = "guest"
     password: Optional[str] = None
+    token_name: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
     client_id: str = Field(default_factory=lambda: str(uuid4()))
 
     model_config = {
         "json_schema_extra": {
             "examples": [{
                 "username": "guest",
-                "password": "password"
+                "password": "password",
+                "token_name": "My Client"
             }]}}
 
 
@@ -48,7 +53,8 @@ class AuthenticationResponse(BaseModel):
     client_id: str
     access_token: str
     refresh_token: str
-    expiration: float
+    expiration: float = Field(
+        description="Expiration timestamp of the refresh token")
 
     model_config = {
         "json_schema_extra": {
@@ -60,8 +66,29 @@ class AuthenticationResponse(BaseModel):
                 "expiration": 1706045776.4168212
             }]}}
 
+    def __getitem__(self, item):
+        if hasattr(self, item):
+            return getattr(self, item)
+        raise KeyError(item)
+
 
 class RefreshRequest(BaseModel):
-    access_token: str
+    access_token: Optional[str] = None
     refresh_token: str
     client_id: str
+
+
+class RegistrationRequest(BaseModel):
+    username: str
+    password: str
+    user_config: NeonUserConfig = NeonUserConfig()
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [{
+                "username": "guest",
+                "password": "password",
+                "user_config": NeonUserConfig().model_dump()
+            }, {"username": "guest",
+                "password": "password"}
+            ]}}

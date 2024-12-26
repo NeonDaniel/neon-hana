@@ -32,6 +32,7 @@ from neon_hana.app.routers.assist import assist_route
 from neon_hana.app.routers.llm import llm_route
 from neon_hana.app.routers.mq_backend import mq_route
 from neon_hana.app.routers.auth import auth_route
+from neon_hana.app.routers.user import user_route
 from neon_hana.app.routers.util import util_route
 from neon_hana.app.routers.node_server import node_route
 from neon_hana.version import __version__
@@ -49,5 +50,6 @@ def create_app(config: dict):
     app.include_router(llm_route)
     app.include_router(util_route)
     app.include_router(node_route)
+    app.include_router(user_route)
 
     return app

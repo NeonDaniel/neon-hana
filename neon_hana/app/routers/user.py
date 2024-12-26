@@ -1,6 +1,6 @@
 # NEON AI (TM) SOFTWARE, Software Development Kit & Application Development System
 # All trademark and other rights reserved by their respective owners
-# Copyright 2008-2021 Neongecko.com Inc.
+# Copyright 2008-2024 Neongecko.com Inc.
 # BSD-3
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -24,8 +24,25 @@
 # NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE,  EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-from neon_data_models.models.user.neon_profile import *
-from ovos_utils.log import log_deprecation
+from fastapi import APIRouter, Depends
+from neon_hana.app.dependencies import jwt_bearer, mq_connector
+from neon_hana.schema.user_requests import GetUserRequest, UpdateUserRequest
+from neon_data_models.models.user import User
 
-log_deprecation('Imports moved to `neon_data_models.models.user.neon_profile`',
-                '1.0.0')
+user_route = APIRouter(tags=["user"], dependencies=[Depends(jwt_bearer)])
+
+
+@user_route.post("/get")
+async def get_user(request: GetUserRequest,
+                   token: str = Depends(jwt_bearer)) -> User:
+    hana_token = jwt_bearer.client_manager.get_token_data(token)
+    return mq_connector.read_user(access_token=hana_token,
+                                  auth_user=hana_token.sub,
+                                  **dict(request))
+
+
+@user_route.post("/update")
+async def update_user(request: UpdateUserRequest,
+                      token: str = Depends(jwt_bearer)) -> User:
+    return mq_connector.update_user(access_token=token,
+                                    **dict(request))

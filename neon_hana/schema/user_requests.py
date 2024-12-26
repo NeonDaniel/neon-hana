@@ -1,6 +1,6 @@
 # NEON AI (TM) SOFTWARE, Software Development Kit & Application Development System
 # All trademark and other rights reserved by their respective owners
-# Copyright 2008-2021 Neongecko.com Inc.
+# Copyright 2008-2024 Neongecko.com Inc.
 # BSD-3
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -24,20 +24,33 @@
 # NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE,  EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-from dataclasses import dataclass, asdict
+from pydantic import BaseModel
+from typing import Optional
+
+from neon_data_models.models.user.database import User
 
 
-@dataclass
-class ClientPermissions:
-    """
-    Data class representing permissions of a particular client connection.
-    """
-    assist: bool = True
-    backend: bool = True
-    node: bool = False
+class GetUserRequest(BaseModel):
+    username: str = "guest"
 
-    def as_dict(self) -> dict:
-        """
-        Get a dict representation of this instance.
-        """
-        return asdict(self)
+    model_config = {
+        "json_schema_extra": {
+            "examples": [{
+                "username": "guest"
+            }]}}
+
+
+class UpdateUserRequest(BaseModel):
+    user: User
+    auth_username: Optional[str] = None
+    auth_password: Optional[str] = None
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [{
+                "user": User(username="guest").model_dump()
+            },
+                {"user": User(username="some_user").model_dump(),
+                 "auth_username": "admin_user",
+                 "auth_password": "admin_password"}
+            ]}}

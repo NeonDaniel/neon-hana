@@ -27,13 +27,17 @@
 import json
 
 from time import time
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Union
 from uuid import uuid4
 from fastapi import HTTPException
 
-from neon_hana.schema.node_model import NodeData
-from neon_hana.schema.user_profile import UserProfile
+from neon_data_models.models.api import CreateUserRequest, ReadUserRequest, \
+    UpdateUserRequest, DeleteUserRequest
+from neon_data_models.models.api.jwt import HanaToken
 from neon_mq_connector.utils.client_utils import send_mq_request
+from neon_data_models.models.client.node import NodeData
+from neon_data_models.models.user.neon_profile import UserProfile
+from neon_data_models.models.user import User
 
 
 class APIError(HTTPException):
@@ -77,6 +81,28 @@ class MQServiceManager:
         code = response['status_code'] if response['status_code'] > 200 else 500
         raise APIError(status_code=code, detail=response['content'])
 
+    @staticmethod
+    def _query_users_api(user_db_request: Union[CreateUserRequest,
+                                                ReadUserRequest,
+                                                UpdateUserRequest,
+                                                DeleteUserRequest]) -> \
+            (int, Union[User, str]):
+        """
+        Query the users API and return a status code and either a valid User or
+        a string error message. Authentication may use EITHER a password or
+        a token.
+        @param user_db_request: UserDbRequest object describing CRUD operation
+            to return
+        @return: success bool, HTTP status code, User object or string error
+        """
+        response = send_mq_request("/neon_users",
+                                   user_db_request.model_dump(exclude={
+                                       "message_id"}),
+                                   target_queue="neon_users_input")
+        if response.get("success"):
+            return 200, User(**response.get("user"))
+        return response.get("code", 500), response.get("error", "")
+
     def get_session(self, node_data: NodeData) -> dict:
         """
         Get a serialized Session object for the specified Node.
@@ -88,6 +114,62 @@ class MQServiceManager:
                                        {"session_id": session_id,
                                         "site_id": node_data.location.site_id})
         return self.sessions_by_id[session_id]
+
+    def create_user(self, user: User) -> User:
+        """
+        Create a new user.
+        @param user: User object to add to the users service database
+        @returns: User object added to the database
+        """
+        create_user_request = CreateUserRequest(user=user, message_id="")
+        code, err_or_user = self._query_users_api(create_user_request)
+        if code != 200:
+            raise HTTPException(status_code=code, detail=err_or_user)
+        return err_or_user
+
+    def read_user(self, username: str, password: Optional[str] = None,
+                  access_token: Optional[HanaToken] = None,
+                  auth_user: Optional[str] = None) -> User:
+        """
+        Get a User object for a user. This requires that a valid password OR
+        access token be provided to prevent arbitrary users from reading
+        private profile info.
+        @param username: Valid username to get a User object for
+        @param password: Valid password to use for authentication
+        @param access_token: Valid access token to use for authentication
+        @param auth_user: Optional username or user ID to use for authentication
+        @returns: User object from the Users service.
+        """
+        auth_user = auth_user or username
+        read_user_request = ReadUserRequest(user_spec=username,
+                                            auth_user_spec=auth_user,
+                                            access_token=access_token,
+                                            password=password, message_id="")
+        code, err_or_user = self._query_users_api(read_user_request)
+        if code != 200:
+            raise HTTPException(status_code=code, detail=err_or_user)
+        return err_or_user
+
+    def update_user(self, user: User,
+                    auth_user: Optional[str] = None,
+                    auth_password: Optional[str] = None) -> User:
+        """
+        Update an existing user in the database.
+        @param user: Updated user object to write
+        @param auth_user: Username to use for authentication
+        @param auth_password: Password associated with `auth_user`
+        @returns: User as read from the database
+        """
+        auth_user = auth_user or user.username
+        auth_password = auth_password or user.password_hash
+        update_user_request = UpdateUserRequest(user=user,
+                                                auth_username=auth_user,
+                                                auth_password=auth_password,
+                                                message_id="")
+        code, err_or_user = self._query_users_api(update_user_request)
+        if code != 200:
+            raise HTTPException(status_code=code, detail=err_or_user)
+        return err_or_user
 
     def query_api_proxy(self, service_name: str, query_params: dict,
                         timeout: int = 10):
